@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>加仓回本计算器（单日 & 第2天加仓）</title>
+<style>
+  :root { --fg:#111; --bg:#f6f7fb; --card:#fff; --muted:#6b7280; --pri:#007aff; --pri2:#005ecb; --ok:#10b981; --err:#ef4444; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial}
+  .wrap{max-width:900px;margin:22px auto;padding:16px}
+  h1{font-size:20px;margin:0 0 12px 0}
+  .tabs{display:flex;gap:8px;margin:10px 0 16px 0;flex-wrap:wrap}
+  .tab{padding:10px 14px;border-radius:12px;background:#e9eef6;color:#111;border:1px solid #d6deea;cursor:pointer;font-weight:600}
+  .tab.active{background:var(--pri);color:#fff;border-color:var(--pri)}
+  .card{background:var(--card);border-radius:16px;padding:16px;box-shadow:0 2px 6px rgba(0,0,0,.06)}
+  .row{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0}
+  .field{flex:1 1 240px;display:flex;flex-direction:column}
+  label{font-size:13px;color:var(--muted);margin-bottom:6px}
+  input[type="number"]{padding:12px;border:1px solid #e5e7eb;border-radius:12px;font-size:16px;background:#fff}
+  .seg{display:flex;gap:10px;flex-wrap:wrap}
+  .seg label{font-size:14px;color:#111}
+  button{width:100%;padding:14px 16px;border:0;border-radius:12px;background:var(--pri);color:#fff;font-weight:700;font-size:16px;margin-top:8px}
+  button:active{background:var(--pri2)}
+  .result{margin-top:14px;padding:12px;border-radius:12px;background:#fff;border:1px solid #e5e7eb}
+  .muted{color:var(--muted);font-size:13px}
+  .ok{color:var(--ok)} .err{color:var(--err)}
+  .num{font-variant-numeric:tabular-nums}
+  details{margin-top:10px}
+  summary{cursor:pointer}
+  .hint{font-size:13px;color:var(--muted)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width:720px){ .grid2{grid-template-columns:1fr} }
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>加仓回本计算器</h1>
+  <div class="tabs">
+    <div class="tab active" data-pane="single">单日加仓</div>
+    <div class="tab" data-pane="day2">第2天加仓（两日连续下跌）</div>
+  </div>
+
+  <!-- 单日加仓 -->
+  <div id="pane-single" class="card">
+    <div class="row">
+      <div class="field">
+        <label>当前持仓金额（元）</label>
+        <input id="s-current" type="number" inputmode="decimal" placeholder="例如 55000" value="55000">
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="field" style="flex:1 1 100%">
+        <label>计算方式</label>
+        <div class="seg">
+          <label><input type="radio" name="s-mode" value="percent" checked> 按跌幅百分比</label>
+          <label><input type="radio" name="s-mode" value="loss"> 按亏损金额</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" id="s-percentRow">
+      <div class="field">
+        <label>下跌百分比（%）</label>
+        <input id="s-drop" type="number" inputmode="decimal" placeholder="例如 2.5" value="2.5">
+      </div>
+    </div>
+
+    <div class="row hidden" id="s-lossRow">
+      <div class="field">
+        <label>亏损金额（元）</label>
+        <input id="s-loss" type="number" inputmode="decimal" placeholder="例如 600">
+      </div>
+    </div>
+
+    <button id="s-calcBtn">计算最少需要加仓多少</button>
+    <div id="s-msg" class="hint" aria-live="polite"></div>
+    <div id="s-out" class="result hidden">
+      <div>至少需要加仓：<strong class="num" id="s-need"></strong> 元</div>
+      <div class="muted">加仓后持仓总额：<span class="num" id="s-total"></span> 元</div>
+      <div class="muted">用于计算的跌幅：<span class="num" id="s-usedDrop"></span>%（当前价 = 1 − 跌幅）</div>
+    </div>
+
+    <details>
+      <summary>单日计算原理</summary>
+      <div class="hint">
+        设当前持仓金额 \(C\)、跌幅 \(d\)（小数），最小加仓额：\(X = C \cdot \frac{d}{1-d}\)。<br>
+        若用亏损 \(L\) 输入，则 \(X = \frac{L}{1 - L/C}\)。两式等价。
+      </div>
+    </details>
+  </div>
+
+  <br>
+
+  <!-- 两日下跌，第2天加仓 -->
+  <div id="pane-day2" class="card hidden">
+    <div class="grid2">
+      <div class="field">
+        <label>原始持仓金额 C（元）</label>
+        <input id="d2-current" type="number" inputmode="decimal" placeholder="例如 55000" value="55000">
+      </div>
+      <div class="field">
+        <label>第1天跌幅 d₁（%）</label>
+        <input id="d2-d1" type="number" inputmode="decimal" placeholder="例如 1.0" value="1.0">
+      </div>
+      <div class="field">
+        <label>第2天跌幅 d₂（%）</label>
+        <input id="d2-d2" type="number" inputmode="decimal" placeholder="例如 1.5" value="1.5">
+      </div>
+      <div class="field">
+        <label>目标回本点</label>
+        <div class="seg" id="d2-target-seg">
+          <label><input type="radio" name="d2-target" value="P0" checked> 回原价 P₀</label>
+          <label><input type="radio" name="d2-target" value="P1"> 回第1天价 P₁</label>
+          <label><input type="radio" name="d2-target" value="rebound"> 从第2天反弹 k%</label>
+        </div>
+      </div>
+      <div class="field hidden" id="d2-k-wrap">
+        <label>k（%）仅当选择“反弹 k%”时有效</label>
+        <input id="d2-k" type="number" inputmode="decimal" placeholder="例如 3.0">
+      </div>
+    </div>
+
+    <button id="d2-calcBtn">计算第2天最少需要加仓多少</button>
+    <div id="d2-msg" class="hint" aria-live="polite"></div>
+    <div id="d2-out" class="result hidden">
+      <div>第2天至少需要加仓：<strong class="num" id="d2-need"></strong> 元</div>
+      <div class="muted">两日连跌后的当前价：<span class="num" id="d2-P2"></span>（以 P₀ = 1 计）</div>
+      <div class="muted">选定目标价：<span class="num" id="d2-PT"></span>（以 P₀ = 1 计）</div>
+      <div class="muted">加仓后持仓总额：<span class="num" id="d2-total"></span> 元</div>
+    </div>
+
+    <details>
+      <summary>两日计算原理</summary>
+      <div class="hint">
+        第1天跌幅 \(d_1\)、第2天跌幅 \(d_2\)，则当前价 \(P_2=P_0(1-d_1)(1-d_2)\)。<br>
+        仅在第2天以 \(P_2\) 加仓 \(X\)，原持仓金额 \(C\)。若目标回本价 \(P_T\)（要求 \(P_T&gt;P_2\)），则：
+        \[
+          X = C \cdot \frac{1-\frac{P_T}{P_0}}{\frac{P_T}{P_2}-1}
+        \]
+        目标可选：回原价 \(P_0\)；回第1天价 \(P_1=P_0(1-d_1)\)；或从第2天反弹 \(k\%\)：\(P_T=P_2(1+k)\)。
+      </div>
+    </details>
+  </div>
+</div>
+
+<script>
+function n(v){ return Number.parseFloat(v) }
+function fmt(v){ return (isFinite(v)? Number(v).toFixed(2) : '-').replace(/\B(?=(\d{3})+(?!\d))/g, ',') }
+
+// --- Tabs ---
+const tabs = document.querySelectorAll('.tab');
+tabs.forEach(t=>{
+  t.addEventListener('click', ()=>{
+    tabs.forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    const pane = t.dataset.pane;
+    document.getElementById('pane-single').classList.toggle('hidden', pane!=='single');
+    document.getElementById('pane-day2').classList.toggle('hidden', pane!=='day2');
+  });
+});
+
+// --- 单日加仓 ---
+const sModeEls = document.querySelectorAll('input[name="s-mode"]');
+const sPercentRow = document.getElementById('s-percentRow');
+const sLossRow = document.getElementById('s-lossRow');
+sModeEls.forEach(r=>{
+  r.addEventListener('change', ()=>{
+    const m = document.querySelector('input[name="s-mode"]:checked').value;
+    sPercentRow.classList.toggle('hidden', m!=='percent');
+    sLossRow.classList.toggle('hidden', m!=='loss');
+    document.getElementById('s-out').classList.add('hidden');
+    document.getElementById('s-msg').textContent='';
+  });
+});
+
+document.getElementById('s-calcBtn').addEventListener('click', ()=>{
+  const C = n(document.getElementById('s-current').value);
+  const mode = document.querySelector('input[name="s-mode"]:checked').value;
+  const msg = document.getElementById('s-msg');
+  const out = document.getElementById('s-out');
+  if(!isFinite(C) || C<=0){
+    msg.innerHTML = '<span class="err">请输入有效的“当前持仓金额”。</span>';
+    out.classList.add('hidden'); return;
+  }
+  let d = NaN, X = NaN;
+  if(mode==='percent'){
+    d = n(document.getElementById('s-drop').value)/100;
+    if(!isFinite(d) || d<=0 || d>=1){
+      msg.innerHTML = '<span class="err">下跌百分比需在 0% ~ 100% 之间。</span>';
+      out.classList.add('hidden'); return;
+    }
+    X = C * (d/(1-d));
+  }else{
+    const L = n(document.getElementById('s-loss').value);
+    if(!isFinite(L) || L<=0 || L>=C){
+      msg.innerHTML = '<span class="err">亏损金额需 &gt; 0 且 &lt; 当前持仓金额。</span>';
+      out.classList.add('hidden'); return;
+    }
+    d = L / C;
+    X = L / (1 - L/C);
+  }
+  document.getElementById('s-need').textContent = fmt(X);
+  document.getElementById('s-total').textContent = fmt(C + X);
+  document.getElementById('s-usedDrop').textContent = (d*100).toFixed(3);
+  msg.innerHTML = '<span class="ok">已计算完成。</span>';
+  out.classList.remove('hidden');
+});
+
+// --- 第2天加仓（两日下跌） ---
+const targetSeg = document.getElementById('d2-target-seg');
+const kWrap = document.getElementById('d2-k-wrap');
+targetSeg.addEventListener('change', ()=>{
+  const v = document.querySelector('input[name="d2-target"]:checked').value;
+  kWrap.classList.toggle('hidden', v!=='rebound');
+  document.getElementById('d2-out').classList.add('hidden');
+  document.getElementById('d2-msg').textContent='';
+});
+
+document.getElementById('d2-calcBtn').addEventListener('click', ()=>{
+  const C = n(document.getElementById('d2-current').value);
+  const d1 = n(document.getElementById('d2-d1').value)/100;
+  const d2 = n(document.getElementById('d2-d2').value)/100;
+  const target = document.querySelector('input[name="d2-target"]:checked').value;
+  const k = n(document.getElementById('d2-k').value)/100;
+
+  const msg = document.getElementById('d2-msg');
+  const out = document.getElementById('d2-out');
+
+  if(!isFinite(C) || C<=0){ msg.innerHTML = '<span class="err">请输入有效的原始持仓金额 C。</span>'; out.classList.add('hidden'); return; }
+  if(!isFinite(d1) || d1<=0 || d1>=1){ msg.innerHTML = '<span class="err">第1天跌幅需在 0% ~ 100% 之间。</span>'; out.classList.add('hidden'); return; }
+  if(!isFinite(d2) || d2<=0 || d2>=1){ msg.innerHTML = '<span class="err">第2天跌幅需在 0% ~ 100% 之间。</span>'; out.classList.add('hidden'); return; }
+
+  const P0 = 1.0;
+  const P1 = P0 * (1 - d1);
+  const P2 = P1 * (1 - d2);
+
+  let PT = NaN;
+  if(target==='P0') PT = P0;
+  else if(target==='P1') PT = P1;
+  else if(target==='rebound'){
+    if(!isFinite(k) || k<=0){ msg.innerHTML = '<span class="err">请输入有效的 k（%）。</span>'; out.classList.add('hidden'); return; }
+    PT = P2 * (1 + k);
+  }
+
+  if(PT <= P2){ msg.innerHTML = '<span class="err">目标价需高于第2天价格，才能通过加仓在目标价回本。</span>'; out.classList.add('hidden'); return; }
+
+  const numerator = 1 - (PT / P0);
+  const denominator = (PT / P2) - 1;
+
+  let X;
+  if (Math.abs(numerator) < 1e-12) {
+    X = 0; // 目标为回原价：不加仓也能在 P0 回本
+  } else {
+    X = C * (numerator / denominator);
+  }
+
+  document.getElementById('d2-need').textContent = (X===Infinity ? '∞' : fmt(X));
+  document.getElementById('d2-P2').textContent = (P2).toFixed(6);
+  document.getElementById('d2-PT').textContent = (PT).toFixed(6);
+  document.getElementById('d2-total').textContent = fmt(C + (isFinite(X)?X:0));
+
+  msg.innerHTML = '<span class="ok">已计算完成。</span>';
+  out.classList.remove('hidden');
+});
+</script>
+</body>
+</html>
